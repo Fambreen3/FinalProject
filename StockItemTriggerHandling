@@ -1,0 +1,99 @@
+// Anonymous block for First method
+List<Stock_Item__c> newstockitems=new List<Stock_Item__c>();
+Stock_Item__c s=new Stock_Item__c();
+s.Item_Name__c='Sugar';
+s.Description__c='Sugar stock';
+s.List_Price__c=100;
+s.Minimum_Stock_Level__c=500;
+s.Stock_on_Hand__c=1500;
+newstockitems.add(s);
+StockItemTriggerHandler.onBeforeCreate(newstockitems);
+insert newstockitems;
+
+// Anonymous block for Second method
+List<Stock_Item__c> s=[select ID, Item_Name__c, Stock_on_Hand__c from Stock_Item__c];
+StockItemTriggerHandler.onBeforeDelete(s);
+delete s;
+
+// Anonymous block for Third method
+List<Stock_Item__c> getstockitems=StockItemTriggerHandler.getLowStockItems();
+System.debug(getstockitems);
+
+trigger StockItemTrigger on Stock_Item__c (before insert, before delete) {
+
+    //Before Insert Handling
+   if(Trigger.isInsert && Trigger.isBefore) {
+       StockItemTriggerHandler.onBeforeCreate(Trigger.new);
+  
+    }
+ 
+//    //After DeleteHandling
+    if (Trigger.isDelete && Trigger.isBefore) {
+        StockItemTriggerHandler.onBeforeDelete(Trigger.old);
+    } 
+}
+
+
+public class StockItemTriggerHandler {
+    public static void onBeforeCreate(List<Stock_Item__c> getstockitem) 
+    {
+        
+        set<String> existingname=new Set<String>(); //creating varible to store set of strings
+        
+        List<Stock_Item__c> existingitem=[select Item_Name__c from Stock_Item__c]; // Storing the name in existingitem
+        for(Stock_Item__c exitem:existingitem)
+        {
+            existingname.add(exitem.Item_Name__c);
+        }
+        System.debug(existingitem);
+        
+        //iterating the stock items and checking if the stock item exists or not. 
+        //If the stock item already exists it will throw an error other wise it will insert the stock item
+        for(Stock_Item__c st:getstockitem)
+        {
+            if(existingname.contains(st.Item_Name__c))
+            {
+                System.debug('in for loop :'+st.Item_Name__c);
+                st.Item_Name__c.addError('The entered stock already exists. Please enter a new stock item.');
+            }
+        }
+    }
+    
+    // Method to create a case if stock item is deleted with non-zero stock
+    public static void onBeforeDelete(List<Stock_Item__c> oldStockItems) {
+        List<Case> casesToCreate = new List<Case>();
+        for (Stock_Item__c stockItem : oldStockItems) {
+            if (stockItem.Stock_On_Hand__c > 0) {
+                casesToCreate.add(new Case(
+                    Subject = 'Stock Item Deleted with Non-Zero Stock',
+                    Description = 'The stock item "' + stockItem.Item_Name__c + '" with Id: ' + stockItem.Id +    
+                    ' was deleted with a stock on hand of ' + 
+                    stockItem.Stock_On_Hand__c + '. Please review.',
+                    Status = 'New',
+                    Priority = 'High'
+                ));
+            }
+        }
+        
+        // Insert cases
+        if (!casesToCreate.isEmpty()) {
+            insert casesToCreate;
+        }
+    }
+    
+    // Method to get Low Stock Items
+    public static List<Stock_Item__c> getLowStockItems() {
+        List<Stock_Item__c> lowStock = 
+            [ SELECT Id, Item_Name__c, 
+             Item_Stock_is_Low__c, 
+             Minimum_Stock_Level__c, 
+             Stock_On_Hand__c
+             FROM 
+             Stock_Item__c
+             WHERE Item_Stock_is_Low__c = True 
+             // Item_Stock_is_Low__c is a formula field: Stock_on_Hand__c <= Minimum_Stock_Level__c
+            ];
+        System.Debug('Low Stock Items List: ' + lowStock);
+        return lowStock;
+    } 
+}
